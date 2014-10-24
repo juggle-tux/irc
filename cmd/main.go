@@ -6,7 +6,7 @@ import (
 	"log"
 	"os"
 	"os/signal"
-//	"time"
+	//	"time"
 
 	"github.com/juggle-tux/irc"
 )
@@ -14,15 +14,15 @@ import (
 // flags
 var (
 	clServer = flag.String("s", "irc.freenode.org:6667", "irc server")
-	clNick = flag.String("n", "", "nickname")
-	clUser = flag.String("u", "", "username if emty use same as nickname")
-	clHelp = flag.Bool("h", false, "show this")
+	clNick   = flag.String("n", "", "nickname")
+	clUser   = flag.String("u", "", "username if emty use same as nickname")
+	clHelp   = flag.Bool("h", false, "show this")
 )
 var response = irc.ResponseFunc(func(req irc.Message, res chan<- irc.Message) bool {
 	if req.Command == "PRIVMSG" && req.Trailing == "!hello" {
 		res <- irc.Message{
-			Command: "PRIVMSG",
-			Parms: req.Parms,
+			Command:  "PRIVMSG",
+			Parms:    req.Parms,
 			Trailing: "hello " + req.Prefix.Nick,
 		}
 	}
@@ -38,7 +38,7 @@ func main() {
 	if *clUser == "" {
 		*clUser = *clNick
 	}
-	
+
 	conn, err := irc.Dial(*clServer, *clNick, *clUser)
 	if err != nil {
 		log.Fatal(err)
@@ -56,9 +56,9 @@ func main() {
 	signal.Notify(quit, os.Interrupt, os.Kill)
 	for {
 		select {
-		case <- quit:
+		case <-quit:
 			return
-		case m := <- conn.Msg:
+		case m := <-conn.Msg:
 			fmt.Print(m)
 		}
 	}

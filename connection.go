@@ -9,15 +9,15 @@ import (
 )
 
 type Conn struct {
-	conn               net.Conn
-	Msg                chan Message
-	Send               chan<- Message
-	recvDone chan struct{} 
+	conn     net.Conn
+	Msg      chan Message
+	Send     chan<- Message
+	recvDone chan struct{}
 	sendDone <-chan struct{}
-	resFunc            chan ResponseFunc
+	resFunc  chan ResponseFunc
 }
 
-func Dial(address, nick, user  string) (c Conn, err error) {
+func Dial(address, nick, user string) (c Conn, err error) {
 	c.resFunc = make(chan ResponseFunc)
 	c.conn, err = net.Dial("tcp4", address)
 	if err != nil {
@@ -26,17 +26,17 @@ func Dial(address, nick, user  string) (c Conn, err error) {
 	c.resFunc = make(chan ResponseFunc)
 	c.recvLoop()
 	c.Send, c.sendDone = sendLoop(c.conn)
-	
+
 	// login
 	go func() {
 		c.Send <- Message{
-			Command: "USER",
-			Parms: Parms{user, "0", "*"},
+			Command:  "USER",
+			Parms:    Parms{user, "0", "*"},
 			Trailing: user,
 		}
 		c.Send <- Message{
 			Command: "NICK",
-			Parms: Parms{nick},
+			Parms:   Parms{nick},
 		}
 	}()
 	for m := range c.Msg {
@@ -51,11 +51,11 @@ func (c *Conn) Join(channel string) {
 	log.Print("Join ", channel)
 	c.Send <- Message{
 		Command: "JOIN",
-		Parms: Parms{channel},
+		Parms:   Parms{channel},
 	}
 }
 
-// ResponseFunc will be called by AutoResponse 
+// ResponseFunc will be called by AutoResponse
 // if the return of the func is true the Message will be still send to the Conn.Msg chan
 type ResponseFunc func(Message, chan<- Message) bool
 
@@ -76,7 +76,7 @@ func (c *Conn) Close() {
 
 func (c *Conn) recvLoop() {
 	c.Msg = make(chan Message, 10)
-	c.recvDone = make(chan struct{}) 
+	c.recvDone = make(chan struct{})
 	resFunc := ResponseFunc(func(Message, chan<- Message) bool {
 		return true
 	})
@@ -104,9 +104,9 @@ func (c *Conn) recvLoop() {
 				log.Printf("ParseMessage(): %s\nraw: %s", err, b)
 				continue
 			}
-		
+
 			select {
-			case resFunc = <- c.resFunc:
+			case resFunc = <-c.resFunc:
 			default:
 			}
 
@@ -115,7 +115,7 @@ func (c *Conn) recvLoop() {
 				c.Send <- Message{Command: "PONG", Trailing: m.Trailing}
 			case resFunc(m, c.Send):
 				c.Msg <- m
-			
+
 			}
 		}
 	}()

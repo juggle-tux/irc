@@ -8,3 +8,7 @@
 /test/cpu.out
 /test/mem.out
 /test/test.test
+/test/#parse_test.go#
+/test/#main.go#
+/cmd/.#main.go
+/.#connection.go
