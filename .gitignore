@@ -1,2 +1,10 @@
 /test/test
 *~
+/cmd/cmd
+/test/.#main.go
+/test/.#parse_test.go
+/test/2014-10-24-18:51.bench
+/test/block.out
+/test/cpu.out
+/test/mem.out
+/test/test.test

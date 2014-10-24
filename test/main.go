@@ -1,10 +1,11 @@
 package main
 
 import (
+	//"fmt"
+	//"time"
 	"log"
 	"os"
 	"os/signal"
-	"time"
 
 	"github.com/juggle-tux/irc"
 )
@@ -19,12 +20,33 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	//defer conn.Close()
+	defer conn.Close()
 	c := make(chan os.Signal)
 	signal.Notify(c, os.Interrupt, os.Kill)
 	go func() {
 		for {
-			log.Printf("%#s", <-conn.Msg)
+			m := <-conn.Msg
+			switch m.Command {
+			case "PRIVMSG":
+				if m.Parms[0] == "#go-bottest" && m.Trailing == "!hello" {
+					conn.Send <- irc.Message{
+						Command:  "PRIVMSG",
+						Parms:    irc.Parms{"#go-bottest"},
+						Trailing: "world",
+					}
+				}
+				continue
+			case "PING":
+				conn.Send <- irc.Message{Command: "PONG", Trailing: m.Trailing}
+			case "376":
+				conn.Send <- irc.Message{Command: "JOIN", Parms: irc.Parms{"#go-bottest"}}
+			default:
+			}
+			if m.Prefix.Nick != "" {
+				log.Printf("%s |%s| %s:%s", m.Prefix.Nick, m.Command, m.Parms, m.Trailing)
+			} else {
+				log.Printf("%s |%s| %s:%s", m.Prefix, m.Command, m.Parms, m.Trailing)
+			}
 		}
 	}()
 	user := irc.Message{
@@ -36,10 +58,7 @@ func main() {
 		Command: "NICK",
 		Parms:   []string{"gotest"},
 	}
-	time.Sleep(time.Second)
 	conn.Send <- user
-	time.Sleep(time.Second)
 	conn.Send <- nick
 	<-c
-	conn.Close()
 }

@@ -2,10 +2,11 @@ package irc
 
 import (
 	"errors"
-	"io"
 	"log"
 	"strings"
 )
+
+var _ = log.Lshortfile
 
 type Prefix struct {
 	Nick, User, Host string
@@ -25,8 +26,8 @@ func ParsePrefix(prefix string) (Prefix, error) {
 		return Prefix{Host: prefix}, nil
 	}
 	return Prefix{
-		Nick: prefix[:iu-len("!")],
-		User: prefix[iu+len("!") : ih-len("@")],
+		Nick: prefix[:iu],
+		User: prefix[iu+len("!") : ih],
 		Host: prefix[ih+len("@"):],
 	}, nil
 }
@@ -61,28 +62,35 @@ func (m Message) String() string {
 	return ":" + m.Prefix.String() + " " + m.Command + " " + m.Parms.String() + tail + "\r\n"
 }
 
-var _ = io.EOF
-
 func ParseMessage(b []byte) (m Message, err error) {
 	str := string(b)
-	if len(b) < 3 {
-		return m, errors.New("message to short")
-	}
-	sep := strings.Index(str[1:], ":") + 1
-	if sep > 0 {
-		m.Trailing = str[sep+1:]
-		str = str[:sep-1]
+	var tmp []string
+
+	if strings.HasPrefix(str, ":") {
+		tmp = strings.SplitN(str, " ", 2)
+		m.Prefix, err = ParsePrefix(tmp[0][1:])
+		if err != nil {
+			return m, err
+		}
+		str = tmp[1]
 	}
 
-	left := strings.Fields(str)
-	if left[0][0] == ':' {
-		m.Prefix, err = ParsePrefix(left[0][1:])
-		if err != nil {
-			return
-		}
-		left = left[1:]
+	tmp = strings.SplitN(str, ":", 2)
+	if len(tmp) > 1 {
+		m.Trailing = strings.TrimSpace(tmp[1])
 	}
-	m.Command = left[0]
-	m.Parms = left[1:]
+
+	tmp = strings.Fields(tmp[0])
+	l := len(tmp)
+	if l < 1 {
+		return m, errors.New("massage has no command")
+	}
+	m.Command = tmp[0]
+
+	if l == 1 {
+		return m, nil
+
+	}
+	m.Parms = tmp[1:]
 	return
 }
