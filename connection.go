@@ -1,5 +1,7 @@
 package irc
 
+import "os"
+
 import (
 	"bufio"
 	"io"
@@ -8,39 +10,54 @@ import (
 	"time"
 )
 
-type Conn struct {
-	conn     net.Conn
-	Msg      chan Message
-	Send     chan<- Message
-	recvDone chan struct{}
-	sendDone <-chan struct{}
-	resFunc  chan ResponseFunc
+type Handler interface {
+	ServeIRC(req Message, res chan<- Message) (skip bool)
 }
 
+type defaultHandler struct{}
+
+func (defaultHandler) ServeIRC(Message, chan<- Message) bool {
+	return false
+}
+
+type Conn struct {
+	conn       net.Conn
+	Msg        chan Message
+	Send       chan<- Message
+	recvDone   chan struct{}
+	sendDone   <-chan struct{}
+	resHandler chan Handler
+	handlerMap map[string]map[string]Handler
+}
+
+type handlerMap map[string]map[string]*Handler
+
 func Dial(address, nick, user string) (c Conn, err error) {
-	c.resFunc = make(chan ResponseFunc)
+	c.resHandler = make(chan Handler)
+	c.handlerMap = make(map[string]map[string]Handler)
+
+	log.Print("connecting to ", address)
 	c.conn, err = net.Dial("tcp4", address)
 	if err != nil {
 		return
 	}
-	c.resFunc = make(chan ResponseFunc)
 	c.recvLoop()
 	c.Send, c.sendDone = sendLoop(c.conn)
 
 	// login
-	go func() {
-		c.Send <- Message{
-			Command:  "USER",
-			Parms:    Parms{user, "0", "*"},
-			Trailing: user,
-		}
-		c.Send <- Message{
-			Command: "NICK",
-			Parms:   Parms{nick},
-		}
-	}()
+	c.Send <- Message{
+		Command:  "USER",
+		Parms:    Parms{user, "0", "*"},
+		Trailing: user,
+	}
+	c.Send <- Message{
+		Command: "NICK",
+		Parms:   Parms{nick},
+	}
+
 	for m := range c.Msg {
-		if m.Command == "376" {
+		if m.Command == RPL_ENDOFMOTD {
+			log.Print(m)
 			break
 		}
 	}
@@ -55,12 +72,8 @@ func (c *Conn) Join(channel string) {
 	}
 }
 
-// ResponseFunc will be called by AutoResponse
-// if the return of the func is true the Message will be still send to the Conn.Msg chan
-type ResponseFunc func(Message, chan<- Message) bool
-
-func (c *Conn) AutoResponse(re ResponseFunc) {
-	c.resFunc <- re
+func (c Conn) AutoResponse(h Handler) {
+	c.resHandler <- h
 }
 
 func (c *Conn) Close() {
@@ -74,24 +87,40 @@ func (c *Conn) Close() {
 	c.conn.Close()
 }
 
+type tHandler struct{}
+
+func (*tHandler) ServeIRC(Message, chan<- Message) bool {
+	log.Print("test")
+	return false
+}
+
 func (c *Conn) recvLoop() {
 	c.Msg = make(chan Message, 10)
 	c.recvDone = make(chan struct{})
-	resFunc := ResponseFunc(func(Message, chan<- Message) bool {
-		return true
-	})
+	var resHandler Handler = &defaultHandler{}
 
 	go func() {
 		defer func() {
 			log.Print("recv loop close")
 			c.recvDone <- struct{}{}
 		}()
+
+		// raw dump
+		lf, err := os.Create(c.conn.RemoteAddr().String() + ".raw")
+		if err != nil {
+			log.Fatal(err)
+		}
+		defer lf.Close()
+		log.Print("logfile ", c.conn.RemoteAddr().String()+".raw")
+		rlog := bufio.NewWriter(lf)
+
+		tH := new(tHandler)
+		c.handlerMap["PING"][""] = tH
 		buf := bufio.NewReader(c.conn)
 		for {
 			b, _, err := buf.ReadLine()
 			switch err {
 			case nil:
-				break
 			case io.EOF:
 				return
 			default:
@@ -104,18 +133,23 @@ func (c *Conn) recvLoop() {
 				log.Printf("ParseMessage(): %s\nraw: %s", err, b)
 				continue
 			}
+			rlog.WriteString(m.String())
+			rlog.Flush()
 
 			select {
-			case resFunc = <-c.resFunc:
+			case resHandler = <-c.resHandler:
 			default:
 			}
 
 			switch {
 			case m.Command == "PING":
 				c.Send <- Message{Command: "PONG", Trailing: m.Trailing}
-			case resFunc(m, c.Send):
+			case !resHandler.ServeIRC(m, c.Send):
 				c.Msg <- m
 
+			}
+			if rh, ok := c.handlerMap[m.Command][m.Parms[0]]; ok {
+				rh.ServeIRC(m, c.Send)
 			}
 		}
 	}()
@@ -133,17 +167,9 @@ func sendLoop(conn net.Conn) (chan<- Message, <-chan struct{}) {
 			done <- struct{}{}
 		}()
 		ticker := time.Tick(500 * time.Millisecond)
-		for {
-			msg, open := <-ch
-			switch {
-			case open:
-				log.Print("send: ", msg.String())
-				<-ticker
-				conn.Write([]byte(msg.String()))
-				continue
-			case !open:
-				return
-			}
+		for m := range ch {
+			<-ticker
+			conn.Write([]byte(m.String()))
 		}
 	}()
 
