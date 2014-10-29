@@ -23,7 +23,7 @@ type Conn struct {
 	address    string
 	Msg        chan Message
 	Send       chan Message
-	recvDone   chan struct{}
+	Done       chan struct{}
 	sendDone   chan struct{}
 	resHandler chan Handler
 	handlerMap map[string]map[string]Handler
@@ -35,13 +35,14 @@ func Dial(address, nick, user string) (*Conn, error) {
 	var err error
 	var c = &Conn{
 		address:    address,
-		resHandler: make(chan Handler),
-		recvDone:   make(chan struct{}),
+		resHandler: make(chan Handler, 1),
+		Done:       make(chan struct{}),
 		sendDone:   make(chan struct{}),
 	}
 	if err = c.connect(); err != nil {
 		return nil, err
 	}
+	c.recvLoop()
 	c.login(nick, user)
 	return c, nil
 
@@ -56,20 +57,17 @@ func (c *Conn) connect() error {
 		return err
 	}
 
-	c.recvLoop()
 	c.sendLoop()
 	return nil
 }
 
 func (c *Conn) reconnect() error {
-	<-c.sendDone
-	
 	if c.conn != nil {
 		if err := c.conn.Close(); err != nil {
 			return err
 		}
 	}
-	return c.connect()	
+	return c.connect()
 }
 
 func (c *Conn) login(nick, user string) {
@@ -104,33 +102,40 @@ func (c Conn) AutoResponse(h Handler) {
 	c.resHandler <- h
 }
 
-func (c *Conn) Close() {
-	c.Send <- Message{
-		Command:  "QUIT",
-		Trailing: "watch this!",
+func (c *Conn) Quit() {
+	if c.Send != nil {
+		log.Print("send QUIT message")
+		c.Send <- Message{
+			Command:  "QUIT",
+			Trailing: "watch this!",
+		}
 	}
-	<-c.recvDone
+}
+
+func (c *Conn) Close() {
+	if c.Send != nil {
+		c.Quit()
+	}
+	if _, open := <-c.Done; open {
+		close(c.Done)
+	}
 	c.conn.Close()
 }
 
-type tHandler struct{}
-
-func (*tHandler) ServeIRC(Message, chan<- Message) bool {
-	log.Print("test")
-	return false
-}
-
 func (c *Conn) recvLoop() {
+	log.Print("recvLoop start")
 	c.Msg = make(chan Message, 10)
 	var resHandler Handler = &defaultHandler{}
 
 	go func() {
 		defer func() {
-			log.Print("recv loop close")
 			if c.Send != nil {
 				close(c.Send)
+				<-c.sendDone
 			}
-			c.recvDone <- <-c.sendDone
+			c.conn.Close()
+			c.Done <- struct{}{}
+			log.Print("recvLoop close")
 		}()
 
 		buf := bufio.NewReader(c.conn)
@@ -142,13 +147,14 @@ func (c *Conn) recvLoop() {
 			case net.Error:
 				if err.(net.Error).Timeout() {
 					close(c.Send)
+					<-c.sendDone
 					if err = c.reconnect(); err == nil {
 						continue
 					}
-					log.Print("recvLoop: ",err)
+					log.Print("recvLoop: ", err)
 					return
 				}
-				
+
 			default:
 				if err == io.EOF {
 					return
@@ -182,12 +188,13 @@ func (c *Conn) recvLoop() {
 }
 
 func (c *Conn) sendLoop() {
+	log.Print("sendLoop start")
 	c.Send = make(chan Message, 10)
 	go func() {
 		defer func() {
-			log.Print("send loop close")
 			c.Send = nil
 			c.sendDone <- struct{}{}
+			log.Print("sendLoop close")
 		}()
 		ticker := time.Tick(500 * time.Millisecond)
 		for m := range c.Send {

@@ -82,7 +82,6 @@ func main() {
 		log.Fatal(err)
 	}
 	defer conn.Close()
-
 	for _, ch := range flag.Args() {
 		conn.Join(ch)
 	}
@@ -97,7 +96,11 @@ func main() {
 		case <-conn.Msg:
 			continue
 		case <-quit:
+			conn.Close()
 			return
+			//		case <-conn.Done:
+			//			return
 		}
 	}
+
 }
