@@ -12,15 +12,20 @@ type Handler interface {
 	ServeIRC(req Message, res chan<- Message) (skip bool)
 }
 
-type defaultHandler struct{}
+type HandlerFunc func(Message, chan<- Message) bool
 
-func (defaultHandler) ServeIRC(Message, chan<- Message) bool {
+func (f HandlerFunc) ServeIRC(req Message, res chan<- Message) bool {
+	return f(req, res)
+}
+
+var defaultHandler HandlerFunc = func(Message, chan<- Message) bool {
 	return false
 }
 
-type Conn struct {
+type Client struct {
 	conn       net.Conn
 	address    string
+	nick, user string
 	Msg        chan Message
 	Send       chan Message
 	Done       chan struct{}
@@ -29,28 +34,27 @@ type Conn struct {
 	handlerMap map[string]map[string]Handler
 }
 
-type handlerMap map[string]map[string]*Handler
-
-func Dial(address, nick, user string) (*Conn, error) {
-	var err error
-	var c = &Conn{
+func Dial(address, nick, user string) (*Client, error) {
+	var c = &Client{
 		address:    address,
+		nick:       nick,
+		user:       user,
 		resHandler: make(chan Handler, 1),
 		Done:       make(chan struct{}),
 		sendDone:   make(chan struct{}),
 	}
-	if err = c.connect(); err != nil {
+	if err := c.connect(); err != nil {
 		return nil, err
 	}
 	c.recvLoop()
-	c.login(nick, user)
+	c.login()
 	return c, nil
 
 }
 
-func (c *Conn) connect() error {
-	log.Print("connecting to ", c.address)
+func (c *Client) connect() error {
 	var err error
+	log.Print("connecting to ", c.address)
 
 	c.conn, err = net.Dial("tcp4", c.address)
 	if err != nil {
@@ -61,24 +65,28 @@ func (c *Conn) connect() error {
 	return nil
 }
 
-func (c *Conn) reconnect() error {
+func (c *Client) reconnect() error {
 	if c.conn != nil {
 		if err := c.conn.Close(); err != nil {
 			return err
 		}
 	}
-	return c.connect()
+	for err := c.connect(); err != nil; err = c.connect() {
+		log.Println(err)
+	}
+	c.login()
+	return nil
 }
 
-func (c *Conn) login(nick, user string) {
+func (c *Client) login() {
 	c.Send <- Message{
 		Command:  "USER",
-		Parms:    Parms{user, "0", "*"},
-		Trailing: user,
+		Parms:    Parms{c.user, "0", "*"},
+		Trailing: c.user,
 	}
 	c.Send <- Message{
 		Command: "NICK",
-		Parms:   Parms{nick},
+		Parms:   Parms{c.nick},
 	}
 
 	for m := range c.Msg {
@@ -90,7 +98,7 @@ func (c *Conn) login(nick, user string) {
 
 }
 
-func (c *Conn) Join(channel string) {
+func (c *Client) Join(channel string) {
 	log.Print("Join ", channel)
 	c.Send <- Message{
 		Command: "JOIN",
@@ -98,11 +106,15 @@ func (c *Conn) Join(channel string) {
 	}
 }
 
-func (c Conn) AutoResponse(h Handler) {
+func (c Client) Handle(h Handler) {
 	c.resHandler <- h
 }
 
-func (c *Conn) Quit() {
+func (c Client) HandleFunc(f func(Message, chan<- Message) bool) {
+	c.Handle(HandlerFunc(f))
+}
+
+func (c *Client) Quit() {
 	if c.Send != nil {
 		log.Print("send QUIT message")
 		c.Send <- Message{
@@ -112,20 +124,17 @@ func (c *Conn) Quit() {
 	}
 }
 
-func (c *Conn) Close() {
-	if c.Send != nil {
-		c.Quit()
-	}
+func (c *Client) Close() {
+	c.Quit()
 	if _, open := <-c.Done; open {
 		close(c.Done)
 	}
-	c.conn.Close()
 }
 
-func (c *Conn) recvLoop() {
+func (c *Client) recvLoop() {
 	log.Print("recvLoop start")
 	c.Msg = make(chan Message, 10)
-	var resHandler Handler = &defaultHandler{}
+	var resHandler Handler = defaultHandler
 
 	go func() {
 		defer func() {
@@ -133,7 +142,10 @@ func (c *Conn) recvLoop() {
 				close(c.Send)
 				<-c.sendDone
 			}
-			c.conn.Close()
+			if c.conn != nil {
+				c.conn.Close()
+			}
+			close(c.Msg)
 			c.Done <- struct{}{}
 			log.Print("recvLoop close")
 		}()
@@ -148,6 +160,7 @@ func (c *Conn) recvLoop() {
 				if err.(net.Error).Timeout() {
 					close(c.Send)
 					<-c.sendDone
+					c.conn.Close()
 					if err = c.reconnect(); err == nil {
 						continue
 					}
@@ -165,7 +178,7 @@ func (c *Conn) recvLoop() {
 
 			m, err := ParseMessage(b)
 			if err != nil {
-				log.Printf("recvLoop: %s\nraw: %s", err, b)
+				log.Printf("recvLoop: %s\nraw: %#nv", err, b)
 				continue
 			}
 
@@ -187,7 +200,7 @@ func (c *Conn) recvLoop() {
 	return
 }
 
-func (c *Conn) sendLoop() {
+func (c *Client) sendLoop() {
 	log.Print("sendLoop start")
 	c.Send = make(chan Message, 10)
 	go func() {

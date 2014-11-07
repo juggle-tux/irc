@@ -6,7 +6,6 @@ import (
 	"log"
 	"os"
 	"os/signal"
-	//	"strings"
 	"time"
 
 	"github.com/juggle-tux/irc"
@@ -36,12 +35,22 @@ var responseMap = map[string]func(*irc.Message) *irc.Message{
 			Trailing: time.Now().String(),
 		}
 	},
+	"!OP": func(req *irc.Message) *irc.Message {
+		return &irc.Message{
+			Command: "MODE",
+			Parms: irc.Parms{
+				0: req.Parms[0],
+				1: "+o",
+				2: req.Prefix.Nick,
+			},
+		}
+	},
 }
 
-type myResponse struct{}
-
-func (myResponse) ServeIRC(req irc.Message, res chan<- irc.Message) bool {
+var ResHandler = func(req irc.Message, res chan<- irc.Message) bool {
 	switch req.Command {
+	case "MODE":
+		log.Print(req)
 	case "PRIVMSG":
 		fmt.Println("<", req.Parms[0], "|", req.Prefix.Nick, ">", req.Trailing)
 		switch req.Parms[0] {
@@ -49,7 +58,7 @@ func (myResponse) ServeIRC(req irc.Message, res chan<- irc.Message) bool {
 		case *clNick:
 			msg := irc.Message{
 				Command:  "PRIVMSG",
-				Parms:    irc.Parms{req.Prefix.Nick},
+				Parms:    irc.Parms{0: req.Prefix.Nick},
 				Trailing: "I'll not speak to you " + req.Prefix.Nick,
 			}
 			fmt.Println("-=>", msg.Parms[0], "<=-", msg.Trailing)
@@ -61,11 +70,20 @@ func (myResponse) ServeIRC(req irc.Message, res chan<- irc.Message) bool {
 				res <- *msg
 			}
 		}
+	case "JOIN":
+		if req.Prefix.Nick == "JuggleTux" {
+			res <- irc.Message{
+				Command: "MODE",
+				Parms: irc.Parms{
+					0: req.Parms[0],
+					1: "+o",
+					2: req.Prefix.Nick,
+				},
+			}
+		}
 	}
 	return false
 }
-
-var response = &myResponse{}
 
 func main() {
 	flag.Parse()
@@ -86,21 +104,15 @@ func main() {
 		conn.Join(ch)
 	}
 
-	conn.AutoResponse(response)
+	conn.HandleFunc(ResHandler)
 
 	quit := make(chan os.Signal)
 	signal.Notify(quit, os.Interrupt, os.Kill)
 
-	for {
-		select {
-		case <-conn.Msg:
-			continue
-		case <-quit:
-			conn.Close()
-			return
-			//		case <-conn.Done:
-			//			return
+	go func() {
+		for _, open := <-conn.Msg; open; _, open = <-conn.Msg {
 		}
-	}
-
+		quit <- os.Interrupt
+	}()
+	<-quit
 }

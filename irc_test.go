@@ -1,31 +1,51 @@
-package main
+package irc
 
 import (
 	"testing"
-
-	"github.com/juggle-tux/irc"
 )
 
 var (
 	testServerRaw     = []byte(":wilhelm.freenode.net 001 nc-test :Welcome to the freenode Internet Relay Chat Network nc-test\r\n")
-	testServerMessage = irc.Message{
-		Prefix:   irc.Prefix{Host: "wilhelm.freenode.net"},
+	testServerMessage = Message{
+		Prefix:   Prefix{Host: "wilhelm.freenode.net"},
 		Command:  "001",
-		Parms:    irc.Parms{"nc-test"},
+		Parms:    Parms{"nc-test"},
 		Trailing: "Welcome to the freenode Internet Relay Chat Network nc-test",
 	}
 
 	testUserRaw     = []byte(":schaeffer!~simcity20@unaffiliated/simcity2000 PRIVMSG #go-nuts :whyrusleeping: noted!\r\n")
-	testUserMessage = irc.Message{
-		Prefix:   irc.Prefix{Nick: "schaeffer", User: "~simcity20", Host: "unaffiliated/simcity2000"},
+	testUserMessage = Message{
+		Prefix:   Prefix{Nick: "schaeffer", User: "~simcity20", Host: "unaffiliated/simcity2000"},
 		Command:  "PRIVMSG",
-		Parms:    irc.Parms{"#go-nuts"},
+		Parms:    Parms{"#go-nuts"},
 		Trailing: "whyrusleeping: noted!",
 	}
 )
 
+func TestMode(t *testing.T) {
+	tM := Mode{}
+	if err := tM.SetMode("+vn"); err != nil {
+		t.Fatal(err)
+	}
+	if err := tM.SetMode("+i"); err != nil {
+		t.Fatal(err)
+	}
+	if err := tM.SetMode("-v"); err != nil {
+		t.Fatal(err)
+	}
+	if err := tM.SetMode("+o"); err != nil {
+		t.Fatal(err)
+	}
+	for i := range tM {
+		if i == 'o' || i == 'i' || i == 'n' {
+			continue
+		}
+		t.Fail()
+	}
+	t.Logf("%s", tM)
+}
 func TestServerMessage(t *testing.T) {
-	msg, err := irc.ParseMessage(testServerRaw)
+	msg, err := ParseMessage(testServerRaw)
 	if err != nil {
 		t.Fatal("parse server msg fail: ", msg, err)
 	}
@@ -45,23 +65,8 @@ func TestServerMessage(t *testing.T) {
 		t.Fatalf("message not the same got %s want %s", msg, testServerMessage)
 	}
 }
-
-func BenchmarkServerMessageParse(b *testing.B) {
-	b.SetBytes(int64(len(testServerRaw)))
-	for i := 0; i < b.N; i++ {
-		irc.ParseMessage(testServerRaw)
-	}
-}
-
-func BenchmarkServerMessageString(b *testing.B) {
-	b.SetBytes(int64(len(testServerRaw)))
-	for i := 0; i < b.N; i++ {
-		testServerMessage.String()
-	}
-}
-
 func TestUserMessage(t *testing.T) {
-	msg, err := irc.ParseMessage(testUserRaw)
+	msg, err := ParseMessage(testUserRaw)
 	if err != nil {
 		t.Fatal("parse server msg fail: ", msg, err)
 	}
@@ -82,13 +87,24 @@ func TestUserMessage(t *testing.T) {
 	}
 }
 
+func BenchmarkServerMessageParse(b *testing.B) {
+	b.SetBytes(int64(len(testServerRaw)))
+	for i := 0; i < b.N; i++ {
+		ParseMessage(testServerRaw)
+	}
+}
+func BenchmarkServerMessageString(b *testing.B) {
+	b.SetBytes(int64(len(testServerRaw)))
+	for i := 0; i < b.N; i++ {
+		testServerMessage.String()
+	}
+}
 func BenchmarkUserMessageParse(b *testing.B) {
 	b.SetBytes(int64(len(testUserRaw)))
 	for i := 0; i < b.N; i++ {
-		irc.ParseMessage(testUserRaw)
+		ParseMessage(testUserRaw)
 	}
 }
-
 func BenchmarkUserMessageString(b *testing.B) {
 	b.SetBytes(int64(len(testUserRaw)))
 	for i := 0; i < b.N; i++ {

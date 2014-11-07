@@ -2,11 +2,8 @@ package irc
 
 import (
 	"errors"
-	"log"
 	"strings"
 )
-
-var _ = log.Lshortfile
 
 type Prefix struct {
 	Nick, User, Host string
@@ -62,9 +59,11 @@ func (m Message) String() string {
 	return ":" + m.Prefix.String() + " " + m.Command + " " + m.Parms.String() + tail + "\r\n"
 }
 
-func ParseMessage(b []byte) (m Message, err error) {
-	str := string(b)
+func ParseMessage(b []byte) (Message, error) {
+	var err error
+	var m Message
 	var tmp []string
+	str := string(b)
 
 	if strings.HasPrefix(str, ":") {
 		tmp = strings.SplitN(str, " ", 2)
@@ -92,5 +91,5 @@ func ParseMessage(b []byte) (m Message, err error) {
 
 	}
 	m.Parms = tmp[1:]
-	return
+	return m, nil
 }
