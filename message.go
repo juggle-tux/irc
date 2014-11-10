@@ -5,10 +5,13 @@ import (
 	"strings"
 )
 
+// Prefix represents an IRC prefix "Nick!User@Host"
 type Prefix struct {
 	Nick, User, Host string
 }
 
+// String outputs the Prefix in the form "Nick!User@Host" or only "Host" if Nick and
+// User is empty
 func (p Prefix) String() string {
 	if p.Nick == "" && p.User == "" {
 		return p.Host
@@ -16,6 +19,9 @@ func (p Prefix) String() string {
 	return p.Nick + "!" + p.User + "@" + p.Host
 }
 
+// ParsePrefix parses the string into a new Prefix. Name and User will be empty if
+// the "!" and "@" are not in the string or at the wrong positon. In that case the
+// entry input string will be in Host
 func ParsePrefix(prefix string) (Prefix, error) {
 	iu := strings.Index(prefix, "!")
 	ih := strings.Index(prefix, "@")
@@ -39,6 +45,7 @@ func (p Parms) String() string {
 	return str
 }
 
+// Message represents a IRC Message like it gets send over the TCP stream
 type Message struct {
 	Prefix   Prefix
 	Command  string
@@ -46,6 +53,7 @@ type Message struct {
 	Trailing string
 }
 
+// String returns a string represantation of the Message and contains a terminating \r\n
 func (m Message) String() string {
 	var tail string
 	if m.Trailing == "" {
@@ -92,4 +100,33 @@ func ParseMessage(b []byte) (Message, error) {
 	}
 	m.Parms = tmp[1:]
 	return m, nil
+}
+
+// Op creates a MODE message to set "+o" to nick in channel
+func Op(nick, channel string) Message {
+	return Message{
+		Command: "MODE",
+		Parms: Parms{
+			0: channel,
+			1: "+o",
+			2: nick,
+		},
+	}
+}
+
+// Msg creates a PRIVMSG so recv (channel/nick) with the conntent of str
+func Msg(recv, str string) Message {
+	return Message{
+		Command:  "PRIVMSG",
+		Parms:    Parms{0: recv},
+		Trailing: str,
+	}
+}
+
+// Join creates a JOIN message to join channel
+func Join(channel string) Message {
+	return Message{
+		Command: "JOIN",
+		Parms:   Parms{0: channel},
+	}
 }

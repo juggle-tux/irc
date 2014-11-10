@@ -1,4 +1,5 @@
 /test/test
+*.log
 *~
 /cmd/cmd
 /test/.#main.go
