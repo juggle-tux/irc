@@ -131,7 +131,6 @@ func (cm *ChannelManager) chControl(req Message, res chan<- Message) bool {
 			ch.nicks[req.Prefix.Nick] = Mode{}
 			return true
 		}
-
 	case "PART":
 		if req.Prefix.Nick == cm.nick {
 			log.Print("left channel ", req.Parms[0])
@@ -206,6 +205,9 @@ func (cm *ChannelManager) chControl(req Message, res chan<- Message) bool {
 			}
 			return true
 		}
+
+	case ERR_BANNEDFROMCHAN:
+		log.Print(req.Parms[0] + ": " + req.Trailing)
 
 	default:
 	}

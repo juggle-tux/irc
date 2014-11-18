@@ -46,7 +46,13 @@ func Dial(address, nick, user string) (*Client, error) {
 	if err := c.connect(); err != nil {
 		return nil, err
 	}
-
+	c.recvLoop()
+	for m := range c.Msg {
+		if m.Command == RPL_ENDOFMOTD {
+			log.Print(m)
+			break
+		}
+	}
 	return c, nil
 
 }
@@ -102,13 +108,7 @@ func (c *Client) connect() error {
 		Command: "NICK",
 		Parms:   Parms{c.nick},
 	}
-	c.recvLoop()
-	for m := range c.Msg {
-		if m.Command == RPL_ENDOFMOTD {
-			log.Print(m)
-			break
-		}
-	}
+
 	return nil
 }
 
@@ -138,8 +138,8 @@ func (c *Client) recvLoop() {
 				c.conn.Close()
 			}
 			close(c.Msg)
-			c.Done <- struct{}{}
 			log.Print("recvLoop close")
+			c.Done <- struct{}{}
 		}()
 
 		resHandler := Handler(defaultHandler)
@@ -152,12 +152,14 @@ func (c *Client) recvLoop() {
 			case io.EOF:
 				return
 			default:
+				log.Print(err)
 				close(c.send)
 				<-c.sendDone
 				if err := c.reconnect(); err != nil {
 					log.Print(err)
 					return
 				}
+				continue
 
 			}
 
@@ -172,12 +174,10 @@ func (c *Client) recvLoop() {
 			default:
 			}
 
-			switch {
-			case m.Command == "PING":
+			if m.Command == "PING" {
 				c.send <- Message{Command: "PONG", Trailing: m.Trailing}
-			case !resHandler.ServeIRC(m, c.send):
+			} else if !resHandler.ServeIRC(m, c.send) {
 				c.Msg <- m
-
 			}
 		}
 	}()
