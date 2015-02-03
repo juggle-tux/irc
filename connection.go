@@ -165,7 +165,7 @@ func (c *Client) recvLoop() {
 
 			m, err := ParseMessage(b)
 			if err != nil {
-				log.Printf("recvLoop: %s\nraw: %#nv", err, b)
+				log.Printf("recvLoop: %s\nraw: %#v", err, b)
 				continue
 			}
 

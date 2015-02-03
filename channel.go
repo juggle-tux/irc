@@ -18,6 +18,7 @@ func (m Mode) SetMode(s string) error {
 		if !((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z')) {
 			return fmt.Errorf("mode must be between a-Z got %q", c)
 		}
+
 	}
 
 	switch op {
@@ -131,6 +132,7 @@ func (cm *ChannelManager) chControl(req Message, res chan<- Message) bool {
 			ch.nicks[req.Prefix.Nick] = Mode{}
 			return true
 		}
+
 	case "PART":
 		if req.Prefix.Nick == cm.nick {
 			log.Print("left channel ", req.Parms[0])
@@ -189,8 +191,7 @@ func (cm *ChannelManager) chControl(req Message, res chan<- Message) bool {
 
 	case RPL_NAMREPLY:
 		if ch, ok := cm.channels[req.Parms[2]]; ok {
-			strs := strings.Fields(req.Trailing)
-			for _, ni := range strs {
+			for _, ni := range strings.Fields(req.Trailing) {
 				m := Mode{}
 				switch ni[0] {
 				case '@':
