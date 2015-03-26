@@ -42,7 +42,6 @@ func TestMode(t *testing.T) {
 		}
 		t.Fail()
 	}
-	t.Logf("%s", tM)
 }
 func TestServerMessage(t *testing.T) {
 	msg, err := ParseMessage(testServerRaw)

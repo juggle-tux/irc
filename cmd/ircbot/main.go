@@ -47,11 +47,11 @@ func ResHandler(req irc.Message, res chan<- irc.Message) bool {
 		case *clNick:
 			res <- irc.Msg(req.Prefix.Nick, "I'll not speak to you "+req.Prefix.Nick)
 		default:
-			if strings.HasPrefix(req.Trailing, "!") {
-				if mf, ok := responseMap[req.Trailing]; ok {
-					msg := mf(&req)
+			if strings.HasPrefix(req.Trailing, "!") { // if somebody says something what starts with a '!'
+				if mf, ok := responseMap[req.Trailing]; ok { // if we have a '!...' function
+					msg := mf(&req) // run it
 					fmt.Println("-=>", msg.Parms[0], "<=-", msg.Trailing)
-					res <- msg
+					res <- msg // send the answer
 				}
 			}
 		}
