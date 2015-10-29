@@ -67,7 +67,7 @@ func (c *Channel) NamesMap() map[string]Mode {
 }
 
 func (c *Channel) Names() []string {
-	str := []string{}
+	str := make([]string, 0, len(c.nicks))
 	for ni, m := range c.nicks {
 		if _, ok := m['o']; ok {
 			ni = "@" + ni
