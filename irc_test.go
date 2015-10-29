@@ -36,23 +36,27 @@ var tests = map[string]testMsg{
 
 func TestMode(t *testing.T) {
 	tM := Mode{}
-	if err := tM.SetMode("+vn"); err != nil {
+
+	if err := tM.SetMode("+a"); err != nil {
 		t.Fatal(err)
 	}
-	if err := tM.SetMode("+i"); err != nil {
+	if err := tM.SetMode("+bc"); err != nil {
 		t.Fatal(err)
 	}
-	if err := tM.SetMode("-v"); err != nil {
+	if err := tM.SetMode("-cb"); err != nil {
 		t.Fatal(err)
+	}
+	if err := tM.SetMode("-a"); err != nil {
+		t.Fatal(err)
+	}
+	if str := tM.String(); str != "" {
+		t.Fatalf("mode shoud be empty got %q", str)
 	}
 	if err := tM.SetMode("+o"); err != nil {
 		t.Fatal(err)
 	}
-	for i := range tM {
-		if i == 'o' || i == 'i' || i == 'n' {
-			continue
-		}
-		t.Fail()
+	if str := tM.String(); str != "+o" {
+		t.Fatalf("mode shoud be \"+o\" got %q", str)
 	}
 }
 
