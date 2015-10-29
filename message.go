@@ -22,19 +22,20 @@ func (p Prefix) String() string {
 // ParsePrefix parses the string into a new Prefix. Name and User will be empty if
 // the "!" and "@" are not in the string or at the wrong positon. In that case the
 // entry input string will be in Host
-func ParsePrefix(prefix string) (Prefix, error) {
+func ParsePrefix(prefix string) Prefix {
 	iu := strings.Index(prefix, "!")
 	ih := strings.Index(prefix, "@")
 	if iu < 0 || ih < 0 || (ih-iu) < 0 {
-		return Prefix{Host: prefix}, nil
+		return Prefix{Host: prefix}
 	}
 	return Prefix{
 		Nick: prefix[:iu],
 		User: prefix[iu+len("!") : ih],
 		Host: prefix[ih+len("@"):],
-	}, nil
+	}
 }
 
+// Parms parameters
 type Parms []string
 
 func (p Parms) String() string {
@@ -67,18 +68,15 @@ func (m Message) String() string {
 	return ":" + m.Prefix.String() + " " + m.Command + " " + m.Parms.String() + tail + "\r\n"
 }
 
+// ParseMessage parses the raw Message
 func ParseMessage(b []byte) (Message, error) {
-	var err error
 	var m Message
 	var tmp []string
 	str := string(b)
 
 	if strings.HasPrefix(str, ":") {
 		tmp = strings.SplitN(str, " ", 2)
-		m.Prefix, err = ParsePrefix(tmp[0][1:])
-		if err != nil {
-			return m, err
-		}
+		m.Prefix = ParsePrefix(tmp[0][1:])
 		str = tmp[1]
 	}
 
@@ -88,16 +86,18 @@ func ParseMessage(b []byte) (Message, error) {
 	}
 
 	tmp = strings.Fields(tmp[0])
+
 	l := len(tmp)
 	if l < 1 {
 		return m, errors.New("massage has no command")
 	}
-	m.Command = tmp[0]
 
+	m.Command = tmp[0]
 	if l == 1 {
 		return m, nil
 
 	}
+
 	m.Parms = tmp[1:]
 	return m, nil
 }

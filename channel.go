@@ -7,8 +7,11 @@ import (
 	"strings"
 )
 
+// Mode represents a IRC mode
 type Mode map[byte]struct{}
 
+// SetMode sets or unsets Mode recording to string
+// e.g. "+o" or "-vo"
 func (m Mode) SetMode(s string) error {
 	if len(s) < 2 {
 		return errors.New("string to short")
@@ -48,6 +51,7 @@ func (m Mode) String() string {
 	return str
 }
 
+// Channel connection to a IRC channel
 type Channel struct {
 	name   string
 	nicks  map[string]Mode
@@ -58,14 +62,17 @@ type Channel struct {
 	cl *Client
 }
 
+// Name returns the Channel name
 func (c *Channel) Name() string {
 	return c.name
 }
 
+// NamesMap returns all nicknames and there Modes in the Channel
 func (c *Channel) NamesMap() map[string]Mode {
 	return c.nicks
 }
 
+// Names returns all nicknames in the Channel
 func (c *Channel) Names() []string {
 	str := make([]string, 0, len(c.nicks))
 	for ni, m := range c.nicks {
@@ -79,14 +86,17 @@ func (c *Channel) Names() []string {
 	return str
 }
 
+// Topic returns the topic of the Channel
 func (c *Channel) Topic() string {
 	return c.topic
 }
 
+// Mode returns the Channel mode
 func (c *Channel) Mode() string {
 	return c.cMode.String()
 }
 
+// Part leaves the Channel
 func (c *Channel) Part() {
 	c.cl.send <- Message{
 		Command: "PART",
@@ -94,6 +104,7 @@ func (c *Channel) Part() {
 	}
 }
 
+// ChannelManager ...
 type ChannelManager struct {
 	channels       map[string]*Channel
 	send           chan<- Message
@@ -101,6 +112,7 @@ type ChannelManager struct {
 	DefaultHandler Handler
 }
 
+// NewCM returns a new ChannelManager listening on CLient
 func NewCM(cl *Client) *ChannelManager {
 	cm := &ChannelManager{
 		channels:       make(map[string]*Channel),
@@ -183,13 +195,13 @@ func (cm *ChannelManager) chControl(req Message, res chan<- Message) bool {
 			}
 		}
 
-	case RPL_TOPIC:
+	case ircRplTOPIC:
 		if ch, ok := cm.channels[req.Parms[0]]; ok {
 			ch.topic = req.Trailing
 			return true
 		}
 
-	case RPL_NAMREPLY:
+	case ircRplNAMREPLY:
 		if ch, ok := cm.channels[req.Parms[2]]; ok {
 			for _, ni := range strings.Fields(req.Trailing) {
 				m := Mode{}
@@ -207,7 +219,7 @@ func (cm *ChannelManager) chControl(req Message, res chan<- Message) bool {
 			return true
 		}
 
-	case ERR_BANNEDFROMCHAN:
+	case ircErrBANNEDFROMCHAN:
 		log.Print(req.Parms[0] + ": " + req.Trailing)
 
 	default:
@@ -216,6 +228,7 @@ func (cm *ChannelManager) chControl(req Message, res chan<- Message) bool {
 	return false
 }
 
+// List lists joined Channels
 func (cm *ChannelManager) List() []Channel {
 	cl := []Channel{}
 	for _, ch := range cm.channels {
@@ -224,6 +237,7 @@ func (cm *ChannelManager) List() []Channel {
 	return cl
 }
 
+// ServeIRC implaments Handler
 func (cm *ChannelManager) ServeIRC(req Message, res chan<- Message) bool {
 	if cm.chControl(req, res) {
 		return true

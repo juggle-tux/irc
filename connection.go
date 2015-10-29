@@ -12,16 +12,21 @@ var defaultHandler HandlerFunc = func(Message, chan<- Message) bool {
 	return false
 }
 
+// Handler handels incoming Messages and may send a Respond on res.
+// Handlers should return true if the message should be forwarded to the next handler
 type Handler interface {
 	ServeIRC(req Message, res chan<- Message) (skip bool)
 }
 
+// HandlerFunc makes a Handler out of a function
 type HandlerFunc func(Message, chan<- Message) bool
 
+// ServeIRC implaments Handler
 func (f HandlerFunc) ServeIRC(req Message, res chan<- Message) bool {
 	return f(req, res)
 }
 
+// Client is a IRC connection
 type Client struct {
 	conn       net.Conn
 	address    string
@@ -34,6 +39,7 @@ type Client struct {
 	resHandler chan Handler
 }
 
+// Dial connects to address witch nick and user name
 func Dial(address, nick, user string) (*Client, error) {
 	var c = &Client{
 		address:    address,
@@ -48,7 +54,7 @@ func Dial(address, nick, user string) (*Client, error) {
 	}
 	c.recvLoop()
 	for m := range c.Msg {
-		if m.Command == RPL_ENDOFMOTD {
+		if m.Command == ircRplENDOFMOTD {
 			log.Print(m)
 			break
 		}
@@ -57,6 +63,7 @@ func Dial(address, nick, user string) (*Client, error) {
 
 }
 
+// Close disconnect from server
 func (c *Client) Close() {
 	c.Quit()
 	if _, open := <-c.Done; open {
@@ -64,23 +71,29 @@ func (c *Client) Close() {
 	}
 }
 
+// Handle sets respons Handler
 func (c Client) Handle(h Handler) {
 	c.resHandler <- h
 }
 
+// HandleFunc sets respons Handler
 func (c Client) HandleFunc(f func(Message, chan<- Message) bool) {
 	c.Handle(HandlerFunc(f))
 }
 
+// Send sends Message to the connectet server
 func (c *Client) Send(m Message) error {
 	c.send <- m
 	return nil
 }
 
+/*
 func (c *Client) SendChan() chan<- Message {
 	return c.send
 }
+*/
 
+// Quit disconnects from server
 func (c *Client) Quit() {
 	if c.send != nil {
 		log.Print("send QUIT message")

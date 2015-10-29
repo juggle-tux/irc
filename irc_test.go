@@ -43,10 +43,10 @@ func TestMode(t *testing.T) {
 	if err := tM.SetMode("+bc"); err != nil {
 		t.Fatal(err)
 	}
-	if err := tM.SetMode("-cb"); err != nil {
+	if err := tM.SetMode("-ca"); err != nil {
 		t.Fatal(err)
 	}
-	if err := tM.SetMode("-a"); err != nil {
+	if err := tM.SetMode("-b"); err != nil {
 		t.Fatal(err)
 	}
 	if str := tM.String(); str != "" {
@@ -66,7 +66,7 @@ func TestServerMessage(t *testing.T) {
 	if err != nil {
 		t.Fatal("parse server msg fail: ", msg, err)
 	}
-	if err := test.eq_msg(msg); err != nil {
+	if err := test.eqMsg(msg); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -77,7 +77,7 @@ func TestUserMessage(t *testing.T) {
 	if err != nil {
 		t.Fatal("parse server msg fail: ", msg, err)
 	}
-	if err := test.eq_msg(msg); err != nil {
+	if err := test.eqMsg(msg); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -144,7 +144,26 @@ func BenchmarkUserMessageParseString(b *testing.B) {
 	}
 }
 
-func (tm testMsg) eq_msg(m Message) error {
+func BenchmarkUserMessageParseStringPipe(b *testing.B) {
+	test := tests["user"]
+	b.SetBytes(int64(len(test.raw)))
+	res := make(chan *Message, 64)
+
+	b.ResetTimer()
+	go func() {
+		for i := 0; i < b.N; i++ {
+			m, _ := ParseMessage(test.raw)
+
+			res <- &m
+		}
+		close(res)
+	}()
+	for m := range res {
+		_ = m.String()
+	}
+}
+
+func (tm testMsg) eqMsg(m Message) error {
 	switch {
 	case m.Prefix.String() != tm.msg.Prefix.String():
 		return fmt.Errorf("prefix not the same got %s want %s", m.Prefix, tm.msg.Prefix)
