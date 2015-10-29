@@ -1,112 +1,181 @@
 package irc
 
 import (
+	"fmt"
 	"testing"
 )
 
-var (
-	testServerRaw     = []byte(":wilhelm.freenode.net 001 nc-test :Welcome to the freenode Internet Relay Chat Network nc-test\r\n")
-	testServerMessage = Message{
-		Prefix:   Prefix{Host: "wilhelm.freenode.net"},
-		Command:  "001",
-		Parms:    Parms{"nc-test"},
-		Trailing: "Welcome to the freenode Internet Relay Chat Network nc-test",
-	}
+type testMsg struct {
+	raw []byte
+	msg *Message
+	err error
+}
 
-	testUserRaw     = []byte(":schaeffer!~simcity20@unaffiliated/simcity2000 PRIVMSG #go-nuts :whyrusleeping: noted!\r\n")
-	testUserMessage = Message{
-		Prefix:   Prefix{Nick: "schaeffer", User: "~simcity20", Host: "unaffiliated/simcity2000"},
-		Command:  "PRIVMSG",
-		Parms:    Parms{"#go-nuts"},
-		Trailing: "whyrusleeping: noted!",
-	}
-)
+var tests = map[string]testMsg{
+	"server": {
+		raw: []byte(":wilhelm.freenode.net 001 nc-test :Welcome to the freenode Internet Relay Chat Network nc-test\r\n"),
+		msg: &Message{
+			Prefix:   Prefix{Host: "wilhelm.freenode.net"},
+			Command:  "001",
+			Parms:    Parms{"nc-test"},
+			Trailing: "Welcome to the freenode Internet Relay Chat Network nc-test",
+		},
+		err: nil,
+	},
+	"user": {
+		raw: []byte(":schaeffer!~simcity20@unaffiliated/simcity2000 PRIVMSG #go-nuts :whyrusleeping: noted!\r\n"),
+		msg: &Message{
+			Prefix:   Prefix{Nick: "schaeffer", User: "~simcity20", Host: "unaffiliated/simcity2000"},
+			Command:  "PRIVMSG",
+			Parms:    Parms{"#go-nuts"},
+			Trailing: "whyrusleeping: noted!",
+		},
+		err: nil,
+	},
+}
 
 func TestMode(t *testing.T) {
 	tM := Mode{}
-	if err := tM.SetMode("+vn"); err != nil {
+
+	if err := tM.SetMode("+a"); err != nil {
 		t.Fatal(err)
 	}
-	if err := tM.SetMode("+i"); err != nil {
+	if err := tM.SetMode("+bc"); err != nil {
 		t.Fatal(err)
 	}
-	if err := tM.SetMode("-v"); err != nil {
+	if err := tM.SetMode("-ca"); err != nil {
 		t.Fatal(err)
+	}
+	if err := tM.SetMode("-b"); err != nil {
+		t.Fatal(err)
+	}
+	if str := tM.String(); str != "" {
+		t.Fatalf("mode shoud be empty got %q", str)
 	}
 	if err := tM.SetMode("+o"); err != nil {
 		t.Fatal(err)
 	}
-	for i := range tM {
-		if i == 'o' || i == 'i' || i == 'n' {
-			continue
-		}
-		t.Fail()
+	if str := tM.String(); str != "+o" {
+		t.Fatalf("mode shoud be \"+o\" got %q", str)
 	}
 }
+
 func TestServerMessage(t *testing.T) {
-	msg, err := ParseMessage(testServerRaw)
+	test := tests["server"]
+	msg, err := ParseMessage(test.raw)
 	if err != nil {
 		t.Fatal("parse server msg fail: ", msg, err)
 	}
-	if msg.Prefix.String() != testServerMessage.Prefix.String() {
-		t.Fatalf("prefix not the same got %s want %s", msg.Prefix, testServerMessage.Prefix)
-	}
-	if msg.Command != testServerMessage.Command {
-		t.Fatalf("command not the same got %s want %s", msg.Command, testServerMessage.Command)
-	}
-	if msg.Parms.String() != testServerMessage.Parms.String() {
-		t.Fatalf("parms not the same got %s want %s", msg.Parms, testServerMessage.Parms)
-	}
-	if msg.Trailing != testServerMessage.Trailing {
-		t.Fatalf("tail not the same got %s want %s", msg.Trailing, testServerMessage.Trailing)
-	}
-	if msg.String() != testServerMessage.String() {
-		t.Fatalf("message not the same got %s want %s", msg, testServerMessage)
+	if err := test.eqMsg(msg); err != nil {
+		t.Fatal(err)
 	}
 }
+
 func TestUserMessage(t *testing.T) {
-	msg, err := ParseMessage(testUserRaw)
+	test := tests["user"]
+	msg, err := ParseMessage(test.raw)
 	if err != nil {
 		t.Fatal("parse server msg fail: ", msg, err)
 	}
-	if msg.Prefix.String() != testUserMessage.Prefix.String() {
-		t.Fatalf("prefix not the same got %s want %s", msg.Prefix, testUserMessage.Prefix)
-	}
-	if msg.Command != testUserMessage.Command {
-		t.Fatalf("command not the same got %s want %s", msg.Command, testUserMessage.Command)
-	}
-	if msg.Parms.String() != testUserMessage.Parms.String() {
-		t.Fatalf("parms not the same got %s want %s", msg.Parms, testUserMessage.Parms)
-	}
-	if msg.Trailing != testUserMessage.Trailing {
-		t.Fatalf("tail not the same got %s want %s", msg.Trailing, testUserMessage.Trailing)
-	}
-	if msg.String() != testUserMessage.String() {
-		t.Fatalf("message not the same got %s want %s", msg, testUserMessage)
+	if err := test.eqMsg(msg); err != nil {
+		t.Fatal(err)
 	}
 }
 
 func BenchmarkServerMessageParse(b *testing.B) {
-	b.SetBytes(int64(len(testServerRaw)))
+	test := tests["server"].raw
+	b.SetBytes(int64(len(test)))
+
+	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		ParseMessage(testServerRaw)
+		ParseMessage(test)
 	}
 }
+
 func BenchmarkServerMessageString(b *testing.B) {
-	b.SetBytes(int64(len(testServerRaw)))
+	test := tests["server"]
+	b.SetBytes(int64(len(test.raw)))
+
+	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		testServerMessage.String()
+		_ = test.msg.String()
 	}
 }
+
+func BenchmarkServerMessageParseString(b *testing.B) {
+	test := tests["server"]
+	b.SetBytes(int64(len(test.raw)))
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		m, _ := ParseMessage(test.raw)
+		_ = m.String()
+	}
+}
+
 func BenchmarkUserMessageParse(b *testing.B) {
-	b.SetBytes(int64(len(testUserRaw)))
+	test := tests["user"].raw
+	b.SetBytes(int64(len(test)))
+
+	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		ParseMessage(testUserRaw)
+		ParseMessage(test)
 	}
 }
+
 func BenchmarkUserMessageString(b *testing.B) {
-	b.SetBytes(int64(len(testUserRaw)))
+	test := tests["user"]
+	b.SetBytes(int64(len(test.raw)))
+
+	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		testUserMessage.String()
+		_ = test.msg.String()
+	}
+}
+
+func BenchmarkUserMessageParseString(b *testing.B) {
+	test := tests["user"]
+	b.SetBytes(int64(len(test.raw)))
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		m, _ := ParseMessage(test.raw)
+		_ = m.String()
+	}
+}
+
+func BenchmarkUserMessageParseStringPipe(b *testing.B) {
+	test := tests["user"]
+	b.SetBytes(int64(len(test.raw)))
+	res := make(chan *Message, 64)
+
+	b.ResetTimer()
+	go func() {
+		for i := 0; i < b.N; i++ {
+			m, _ := ParseMessage(test.raw)
+
+			res <- &m
+		}
+		close(res)
+	}()
+	for m := range res {
+		_ = m.String()
+	}
+}
+
+func (tm testMsg) eqMsg(m Message) error {
+	switch {
+	case m.Prefix.String() != tm.msg.Prefix.String():
+		return fmt.Errorf("prefix not the same got %s want %s", m.Prefix, tm.msg.Prefix)
+	case m.Command != tm.msg.Command:
+		return fmt.Errorf("command not the same got %s want %s", m.Command, tm.msg.Command)
+	case m.Parms.String() != tm.msg.Parms.String():
+		return fmt.Errorf("parms not the same got %s want %s", m.Parms, tm.msg.Parms)
+	case m.Trailing != tm.msg.Trailing:
+		return fmt.Errorf("tail not the same got %s want %s", m.Trailing, tm.msg.Trailing)
+	case m.String() != string(tm.raw):
+		return fmt.Errorf("message not the same got %s want %s", m, string(tm.raw))
+	default:
+		return nil
 	}
 }
